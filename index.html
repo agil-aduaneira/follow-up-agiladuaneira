@@ -592,13 +592,14 @@ function saveImportadores() {
 function addImportador(nome, cnpj) {
   cnpj = cnpj || '';
   if (!nome) return;
-  const exists = importadores.find(i => i.nome.toLowerCase() === nome.toLowerCase());
-  if (!exists) {
+  // Filiais: mesmo nome com CNPJ diferente é permitido
+  const exactDup = importadores.find(i =>
+    i.nome.toLowerCase() === nome.toLowerCase() &&
+    ((!cnpj && !i.cnpj) || (cnpj && i.cnpj && i.cnpj === cnpj))
+  );
+  if (!exactDup) {
     importadores.push({nome, cnpj});
     importadores.sort((a,b) => a.nome.localeCompare(b.nome));
-    saveImportadores();
-  } else if (cnpj && !exists.cnpj) {
-    exists.cnpj = cnpj;
     saveImportadores();
   }
 }
@@ -1331,21 +1332,31 @@ function cadAddImp() {
   const nome = (nomeEl.value||'').trim();
   const cnpj = (cnpjEl.value||'').trim();
   if (!nome) { nomeEl.focus(); showToast('Informe o nome do importador.'); return; }
-  // Check duplicate: by CNPJ (if provided) or by exact name (case-insensitive)
+
+  // Mesmo CNPJ já cadastrado (CNPJ é único) → bloquear
   const dupByCNPJ = cnpj && importadores.find(i => i.cnpj && i.cnpj === cnpj);
-  const dupByName = importadores.find(i => i.nome.toLowerCase() === nome.toLowerCase());
   if (dupByCNPJ) {
     showToast('⚠ CNPJ já cadastrado para: ' + dupByCNPJ.nome);
     return;
   }
-  if (dupByName) {
-    showToast('⚠ Importador "' + dupByName.nome + '" já está na lista.');
+
+  // Mesmo nome + mesmo CNPJ (ou ambos sem CNPJ) → duplicata exata, bloquear
+  const exactDup = importadores.find(i =>
+    i.nome.toLowerCase() === nome.toLowerCase() &&
+    ((!cnpj && !i.cnpj) || (cnpj && i.cnpj && i.cnpj === cnpj))
+  );
+  if (exactDup) {
+    showToast('⚠ Importador "' + exactDup.nome + '" com este CNPJ já está na lista.');
     renderCadBody();
     return;
   }
+
+  // Mesmo nome + CNPJ diferente → filial, permitir
+  const sameNameDiff = importadores.find(i => i.nome.toLowerCase() === nome.toLowerCase());
   addImportador(nome, cnpj);
   nomeEl.value = ''; cnpjEl.value = '';
-  renderCadBody(); populateSelects(); showToast('✓ Importador adicionado!');
+  renderCadBody(); populateSelects();
+  showToast(sameNameDiff ? '✓ Filial adicionada! (' + nome + ')' : '✓ Importador adicionado!');
 }
 function cadDelImp(i) {
   if (!confirm('Remover "' + importadores[i].nome + '" da lista?')) return;
