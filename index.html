@@ -16,7 +16,7 @@ import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc }
                              from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyDAXMU7aK_Pd1MfGdvjbG5zM8SuybVu1mc",
+  apiKey:            "AIzaSyDAXMU7aK_PdlMfGdvjbG5zM8SuybVu1mc",
   authDomain:        "follow-up-agil.firebaseapp.com",
   projectId:         "follow-up-agil",
   storageBucket:     "follow-up-agil.firebasestorage.app",
@@ -592,7 +592,7 @@ function saveImportadores() {
 function addImportador(nome, cnpj) {
   cnpj = cnpj || '';
   if (!nome) return;
-  const exists = importadores.find(i => i.nome === nome);
+  const exists = importadores.find(i => i.nome.toLowerCase() === nome.toLowerCase());
   if (!exists) {
     importadores.push({nome, cnpj});
     importadores.sort((a,b) => a.nome.localeCompare(b.nome));
@@ -1331,7 +1331,7 @@ function cadAddImp() {
   const nome = (nomeEl.value||'').trim();
   const cnpj = (cnpjEl.value||'').trim();
   if (!nome) { nomeEl.focus(); showToast('Informe o nome do importador.'); return; }
-  // Check duplicate: by CNPJ (if provided) or by exact name
+  // Check duplicate: by CNPJ (if provided) or by exact name (case-insensitive)
   const dupByCNPJ = cnpj && importadores.find(i => i.cnpj && i.cnpj === cnpj);
   const dupByName = importadores.find(i => i.nome.toLowerCase() === nome.toLowerCase());
   if (dupByCNPJ) {
@@ -1339,7 +1339,8 @@ function cadAddImp() {
     return;
   }
   if (dupByName) {
-    showToast('⚠ Importador com esse nome já cadastrado.');
+    showToast('⚠ Importador "' + dupByName.nome + '" já está na lista.');
+    renderCadBody();
     return;
   }
   addImportador(nome, cnpj);
