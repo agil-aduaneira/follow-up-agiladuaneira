@@ -1048,6 +1048,15 @@ function renderForm(p) {
     <div class="fg"><label>Solic. Desova</label>      <input id="f-solicDesova" value="${v('solicDesova')}" placeholder="dd/mm/aaaa"></div>
     <div class="fg"><label>Data da Desova</label>     <input id="f-desova"      value="${v('desova')}"      placeholder="dd/mm/aaaa"></div>
 
+    ${customCols.length ? `
+    <div class="fsec">Campos Personalizados</div>
+    ${customCols.map(cc => {
+      const inputType = cc.type === 'number' ? 'number' : 'text';
+      const placeholder = cc.type === 'date' ? 'dd/mm/aaaa' : '';
+      return `<div class="fg"><label>${cc.label}</label><input id="f-${cc.colId}" type="${inputType}" value="${v(cc.field)}" placeholder="${placeholder}"></div>`;
+    }).join('')}
+    ` : ''}
+
     <div class="fg full"><label>Observações</label><textarea id="f-obs">${v('obs')}</textarea></div>
   </div>`;
 
@@ -1130,6 +1139,12 @@ function saveProc() {
 
   const obj = {};
   KEYS.forEach((k,i) => { const el=document.getElementById(IDS[i]); if(el) obj[k]=el.value.trim(); });
+
+  // Campos personalizados (criados via "+ Adicionar Coluna")
+  customCols.forEach(cc => {
+    const el = document.getElementById('f-' + cc.colId);
+    if (el) obj[cc.field] = el.value.trim();
+  });
 
   // Always register whatever was typed/selected
   if (obj.cliente && obj.cliente.trim()) addImportador(obj.cliente.trim(), (obj.cnpj||'').trim());
@@ -1638,7 +1653,9 @@ function loadCols() {
       const missing = allIds.filter(id => !valid.includes(id));
       colOrder = [...valid, ...missing];
     } else {
-      colOrder = [...DEFAULT_COL_ORDER];
+      // Primeiro carregamento: padrão + quaisquer colunas personalizadas já registradas
+      const customIds = ALL_COLS.filter(c => c.custom).map(c => c.id);
+      colOrder = [...DEFAULT_COL_ORDER, ...customIds.filter(id => !DEFAULT_COL_ORDER.includes(id))];
     }
   } catch(e) { colOrder = [...DEFAULT_COL_ORDER]; }
 }
@@ -1746,11 +1763,13 @@ function renderColMgr() {
 
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:10px;
       background:var(--g50);border:1px solid var(--g200);border-radius:var(--r8)">
-      <input id="newcol-label" placeholder="Nome da nova coluna (ex: Nº DUE)"
+      <input id="newcol-label" placeholder="Nome da nova coluna (ex: Numerário)"
         style="width:100%;height:32px;padding:0 9px;border:1px solid var(--g200);border-radius:var(--r4);font-size:12px;outline:none">
-      <select id="newcol-field"
+      <select id="newcol-type"
         style="width:100%;height:32px;padding:0 9px;border:1px solid var(--g200);border-radius:var(--r4);font-size:12px;outline:none;background:#fff">
-        ${CUSTOM_FIELD_OPTIONS.map(f => `<option value="${f.id}">${f.label}</option>`).join('')}
+        <option value="text">Texto</option>
+        <option value="date">Data (dd/mm/aaaa)</option>
+        <option value="number">Número</option>
       </select>
       <button class="btn-cad-add" onclick="addCustomCol()" style="width:100%">+ Adicionar Coluna</button>
     </div>
@@ -1843,33 +1862,6 @@ function buildColMgrRows() {
 // ── CUSTOM COLUMNS (user-added via "+ Adicionar Coluna") ──
 const STORAGE_CUSTOM_COLS = 'agil_custom_cols_v1';
 
-const CUSTOM_FIELD_OPTIONS = [
-  {id:'recebProc',  label:'Receb. Documentos'},
-  {id:'afrmm',      label:'AFRMM'},
-  {id:'presenca',   label:'Presença de Carga'},
-  {id:'scanner',    label:'Scanner Liberado'},
-  {id:'mapaLib',    label:'Mapa Liberação'},
-  {id:'espNF',      label:'Envio Espelho NF'},
-  {id:'glmeEntr',   label:'GLME Entrega'},
-  {id:'glmeLib',    label:'Liberação ICMS'},
-  {id:'daeICMS',    label:'DAE ICMS Envio'},
-  {id:'compICMS',   label:'Comprovante ICMS'},
-  {id:'recebNF',    label:'Receb. Nota Fiscal'},
-  {id:'envNFSis',   label:'Env. NF Siscoex'},
-  {id:'homSiscoex', label:'Homologação Siscoex'},
-  {id:'averbacao',  label:'Averbação'},
-  {id:'ceMercante', label:'CE Mercante'},
-  {id:'hbl',        label:'HBL / HAWB'},
-  {id:'pod',        label:'POD'},
-  {id:'containers', label:'Containers'},
-  {id:'consolidado',label:'Consolidado'},
-  {id:'retifDI',    label:'Retificação DI'},
-  {id:'confCE',     label:'Conferência CE'},
-  {id:'autReg',     label:'Autorização Registro'},
-  {id:'icmsDecl',   label:'ICMS Declarado'},
-  {id:'obs',        label:'Observações (duplicar)'},
-];
-
 let customCols = [];
 
 function loadCustomCols() {
@@ -1883,25 +1875,33 @@ function loadCustomCols() {
 function saveCustomCols() {
   try { localStorage.setItem(STORAGE_CUSTOM_COLS, JSON.stringify(customCols)); } catch(e){}
 }
+function customColRender(cc) {
+  if (cc.type === 'number') {
+    return p => `<td style="font-size:11px;text-align:right">${(p[cc.field]!==undefined && p[cc.field]!=='') ? p[cc.field] : '—'}</td>`;
+  }
+  return p => `<td style="font-size:11px">${p[cc.field] || '—'}</td>`;
+}
 function registerCustomCol(cc) {
   if (ALL_COLS.find(c => c.id === cc.colId)) return; // already registered this session
   ALL_COLS.push({
     id: cc.colId,
     label: cc.label,
-    render: p => `<td style="font-size:11px">${p[cc.field] || '—'}</td>`
+    custom: true,
+    type: cc.type || 'text',
+    render: customColRender(cc)
   });
   if (!colOrder.includes(cc.colId)) colOrder.push(cc.colId);
 }
 
 function addCustomCol() {
   const labelEl = document.getElementById('newcol-label');
-  const fieldEl = document.getElementById('newcol-field');
+  const typeEl  = document.getElementById('newcol-type');
   const label = (labelEl.value || '').trim();
-  const field = fieldEl.value;
+  const type  = typeEl.value;
   if (!label) { labelEl.focus(); showToast('Informe o nome da coluna.'); return; }
 
-  const colId = 'custom_' + field + '_' + Date.now();
-  const cc = { colId, label, field };
+  const colId = 'custom_' + Date.now();
+  const cc = { colId, label, field: colId, type };
   customCols.push(cc);
   saveCustomCols();
   registerCustomCol(cc);
@@ -1911,11 +1911,11 @@ function addCustomCol() {
   renderThead();
   render();
   renderColMgr();
-  showToast('✓ Coluna "' + label + '" adicionada!');
+  showToast('✓ Coluna "' + label + '" adicionada! Já aparece no formulário do processo.');
 }
 
 function removeCustomCol(colId) {
-  if (!confirm('Remover esta coluna personalizada?')) return;
+  if (!confirm('Remover esta coluna personalizada? Os dados já preenchidos nela serão mantidos no banco, mas o campo deixará de aparecer no formulário e na tabela.')) return;
   customCols = customCols.filter(c => c.colId !== colId);
   saveCustomCols();
   colOrder = colOrder.filter(id => id !== colId);
@@ -1947,7 +1947,7 @@ document.getElementById('overlay').addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if(e.key==='Escape') { closeModal(); closePanel(); } });
 
-load(); loadCadastros(); loadStatusRules(); loadCols(); loadHiddenCols(); loadCustomCols(); populateSelects(); renderThead(); render();
+load(); loadCadastros(); loadStatusRules(); loadCustomCols(); loadCols(); loadHiddenCols(); populateSelects(); renderThead(); render();
 </script>
 
 <!-- CADASTROS PANEL -->
